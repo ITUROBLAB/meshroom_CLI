@@ -9,7 +9,6 @@ from superglue_models.utils import (AverageTimer,read_image,make_matching_plot, 
 
 torch.set_grad_enabled(False)
 
-
 if __name__ == '__main__':
     image0_path = 'dataset_tomato01/img0006.png'
     image1_path = 'dataset_tomato01/img0008.png'
