@@ -4,8 +4,8 @@ import cv2
 import matplotlib.cm as cm
 import torch
 import matplotlib
-from models.matching import Matching
-from models.utils import (AverageTimer,read_image,make_matching_plot, frame2tensor)
+from superglue_models.matching import Matching
+from superglue_models.utils import (AverageTimer,read_image,make_matching_plot, frame2tensor)
 
 torch.set_grad_enabled(False)
 
