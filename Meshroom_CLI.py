@@ -1,8 +1,9 @@
 # Meshroom implementation by David Castano for Windows. This adaptation of his code by Dr. Anirudh Rao (Imperial College London) to run on Linux machines. 
-# Updated by Abdurrahman Yilmaz (ayilmaz@lincoln.ac.uk) v04
+# Updated by Abdurrahman Yilmaz (ayilmaz@lincoln.ac.uk) v05
 
 import sys
 import os , os.path
+from PIL import Image
 #import shutil
 import math
 import time
@@ -13,6 +14,8 @@ from scipy.spatial.transform import Rotation as R
 from scipy.optimize import least_squares
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+
+import open3d as o3d
 
 from io import StringIO
 
@@ -30,15 +33,47 @@ def SilentMkdir(theDir):    # function to create a directory
         pass
     return 0
 
+def run_0_downsampleImages(baseDir,imgDir,downsample_factor):
 
-def run_1_cameraInit(binPath,baseDir,imgDir):
+    taskFolder = '/0_DownsampledImages'
+    outputDir = baseDir + taskFolder
+    os.makedirs(outputDir, exist_ok=True)
+
+    print("----------------------- 0/14 DOWNSAMPLING IMAGES -----------------------")
+
+    if downsample_factor > 1.0:
+        for filename in os.listdir(imgDir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+                input_path = os.path.join(imgDir, filename)
+                output_path = os.path.join(outputDir, filename)
+                
+                try:
+                    with Image.open(input_path) as img:
+                        # Calculate new dimensions
+                        new_width = int(img.width / downsample_factor)
+                        new_height = int(img.height / downsample_factor)
+                        
+                        # Downsample image
+                        downsampled_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        
+                        # Save downsampled image
+                        downsampled_img.save(output_path)
+                        print(f"Processed {filename} -> {output_path}")
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
+
+def run_1_cameraInit(binPath,baseDir,imgDir,downsample_factor):
 
     taskFolder = '/1_CameraInit'
     SilentMkdir(baseDir + taskFolder)
 
     print("----------------------- 1/14 CAMERA INITIALIZATION -----------------------")
 
-    imageFolder = imgDir + "/"
+    if downsample_factor > 1.0:
+        imageFolder = baseDir + '/0_DownsampledImages' + "/"
+    else:
+        imageFolder = imgDir + "/"
+
     sensorDatabase = str(Path(binPath).parent) + '/share/aliceVision/cameraSensors.db' # Path to the sensors database, might change in later versions of meshroom
    
     output = baseDir + taskFolder + '/cameraInit.sfm'
@@ -232,7 +267,7 @@ def run_8_depthMapFilter(binPath,baseDir):
     os.system(cmdLine)
 
 
-def run_9_meshing(binPath,baseDir  , maxInputPoints = 500000000  , maxPoints=100000000,colorizeoutput="True"):
+def run_9_meshing(binPath,baseDir  , maxInputPoints = 500000000  , maxPoints=100000000, colorizeoutput="True"):
     taskFolder = "/9_Meshing"
     SilentMkdir(baseDir + taskFolder)
 
@@ -250,7 +285,6 @@ def run_9_meshing(binPath,baseDir  , maxInputPoints = 500000000  , maxPoints=100
     cmdLine += " --maxPoints " + str(maxPoints)
     cmdLine += " --verboseLevel " + verboseLevel
     cmdLine += " --colorizeOutput " + colorizeoutput
-
 
     print(cmdLine)
     os.system(cmdLine)
@@ -370,6 +404,10 @@ def main():
     binPath = sys.argv[1]           ##  --> path of the binary files from Meshroom
     baseDir = sys.argv[2]           ##  --> name of the Folder containing the process (a new folder will be created)
     imgDir = sys.argv[3]            ##  --> Folder containing the images 
+    if len(sys.argv) > 4:
+        downsample_factor = float(sys.argv[4]) ##  --> To downsample input images 
+    else:
+        downsample_factor = 1.0
     rerunCylce = 5 ## --> Reconstruction rerun every ... number of new images
 
     SilentMkdir(baseDir)
@@ -384,7 +422,7 @@ def main():
             if first_iteration_:
                 if numberOfImages > rerunCylce:
                     print("Images found in the directory. Starting Meshroom processing.")
-                    updateProcess(binPath, imgDir, numberOfImages)
+                    updateProcess(binPath, imgDir, numberOfImages, downsample_factor)
                     scalePC()
                     endTime = time.time()
                     hours, rem = divmod(endTime-startTime, 3600)
@@ -393,7 +431,7 @@ def main():
                 first_iteration_ = False
             elif checkForNewImages(numberOfImages, rerunCylce):
                 print("New images detected. Updating the Meshroom processing steps.")
-                updateProcess(binPath, imgDir, numberOfImages)
+                updateProcess(binPath, imgDir, numberOfImages, downsample_factor)
                 scalePC()
                 endTime = time.time()
                 hours, rem = divmod(endTime-startTime, 3600)
@@ -458,7 +496,6 @@ def parse_real_poses(csv_file):
     poses = {}
     for index, row in df.iterrows():
         image_name = row['image_name']
-        print("image_name: ", image_name)
         position = row[['x', 'y', 'z']].tolist()
         orientation = row[['roll', 'pitch', 'yaw']].tolist()
         poses[image_name] = {
@@ -504,39 +541,39 @@ def residuals(affine_params, points, target_points):
     transformed_points = affine_transformation(points, affine_params)
     return (transformed_points - target_points).flatten()
 
-def updateProcess(binPath, imgDir, numberOfImages):
-    print("No need to update")
+def updateProcess(binPath, imgDir, numberOfImages, downsample_factor=1.0):
+    #print("No need to update")
 
-    #run_1_cameraInit(binPath,baseDir,imgDir)
-    #run_2_featureExtraction(binPath,baseDir, numberOfImages)
-    #run_3_imageMatching(binPath,baseDir)
-    #run_4_featureMatching(binPath,baseDir,numberOfImages)
-    #run_5_structureFromMotion(binPath,baseDir)
-    #run_6_prepareDenseScene(binPath,baseDir)
-    #run_7_depthMap(binPath,baseDir , numberOfImages )
-    #run_8_depthMapFilter(binPath,baseDir)
-    #run_9_meshing(binPath,baseDir)
-    ##run_10_meshFiltering(binPath,baseDir)
-    ##run_11_meshDecimate(binPath,baseDir)
-    ##run_12_meshResampling(binPath,baseDir)
-    ##run_13_texturing(binPath,baseDir)
-    #run_14_convertSFMFormat(binPath,baseDir)
+    run_0_downsampleImages(baseDir,imgDir,downsample_factor)
+    run_1_cameraInit(binPath,baseDir,imgDir,downsample_factor)
+    run_2_featureExtraction(binPath,baseDir, numberOfImages)
+    run_3_imageMatching(binPath,baseDir)
+    run_4_featureMatching(binPath,baseDir,numberOfImages)
+    run_5_structureFromMotion(binPath,baseDir)
+    run_6_prepareDenseScene(binPath,baseDir)
+    run_7_depthMap(binPath,baseDir , numberOfImages )
+    run_8_depthMapFilter(binPath,baseDir)
+    run_9_meshing(binPath,baseDir)
+    #run_10_meshFiltering(binPath,baseDir)
+    #run_11_meshDecimate(binPath,baseDir)
+    #run_12_meshResampling(binPath,baseDir)
+    #run_13_texturing(binPath,baseDir)
+    run_14_convertSFMFormat(binPath,baseDir)
 
 def scalePC():
     taskFolder = "/5_structureFromMotion"
     outputViewsAndPoses = baseDir + taskFolder + '/cameras.sfm' 
     estimated_poses = parse_estimated_poses(outputViewsAndPoses)
 
-    print("Estimated Poses:", estimated_poses)
+    #real_poses = parse_real_poses('/home/ayilmaz/AGRI-Opencore/DataSet_Franka_Arm/20240205_trial04_all_lattices_in_an_order/image_info_meshroom_trial.csv')
+    real_poses = parse_real_poses('/home/ayilmaz/AGRI-Opencore/DataSet_Franka_Arm/20240711_all/image_info_Meshroom.csv')
 
-    real_poses = parse_real_poses('/home/ayilmaz/AGRI-Opencore/DataSet_Franka_Arm/20240205_trial04_all_lattices_in_an_order/image_info_meshroom_trial.csv')
+    print("Real poses: ", real_poses)
 
     for image_name, pose in real_poses.items():
         orientation = pose['orientation']
         #print(f"Converting RPY for {image_name}: {orientation}")
         real_poses[image_name]['rotation_matrix'] = rpy_to_rotation_matrix(pose['orientation'])
-    
-    print("Real Poses with Rotation Matrices:", real_poses)
 
     # Collect corresponding points
     estimated_points = []
@@ -544,7 +581,7 @@ def scalePC():
 
     for image_name, real_pose in real_poses.items():
         for pose_id, estimated_pose in estimated_poses.items():
-            print("estimated_pose['image_name']: ", estimated_pose['image_name'])
+            #print("estimated_pose['image_name']: ", estimated_pose['image_name'])
             if image_name == estimated_pose['image_name']:
                 estimated_points.append(estimated_pose['center'])
                 real_points.append(real_pose['position'])
@@ -564,6 +601,39 @@ def scalePC():
     for i in range(len(Q)):
         print(f"Real Point {i}: {Q[i]}")
         print(f"Transformed Point {i}: {transformed_points[i]}")
+        print(f"Estimated Point {i}: {P[i]}")
+
+    taskFolder = "/14_convertSFMFormat"
+    _input = baseDir +   taskFolder + '/densePointCloud.ply'
+    output = baseDir + taskFolder + '/densePointCloud_tf.ply'
+
+    point_cloud = o3d.io.read_point_cloud(_input)
+
+    # Apply the affine transformation to the point cloud
+    transformed_point_cloud = apply_affine_transformation_to_point_cloud(point_cloud, affine_params)
+
+    # Save the transformed point cloud to the output file
+    o3d.io.write_point_cloud(output, transformed_point_cloud)
+
+    print("Transformed PC saved")
+
+def apply_affine_transformation_to_point_cloud(point_cloud, affine_params):
+    points = np.asarray(point_cloud.points)
+    transformed_points = affine_transformation(points, affine_params)
+    
+    # Create a new point cloud for the transformed points
+    transformed_point_cloud = o3d.geometry.PointCloud()
+    transformed_point_cloud.points = o3d.utility.Vector3dVector(transformed_points)
+
+    # Preserve RGB colors if available
+    if point_cloud.has_colors():
+        transformed_point_cloud.colors = point_cloud.colors
+
+    # Preserve other attributes if available
+    if point_cloud.has_normals():
+        transformed_point_cloud.normals = point_cloud.normals
+
+    return transformed_point_cloud
 
 if __name__ == "__main__":
     main()
